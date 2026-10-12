@@ -60,18 +60,32 @@
   // van co the goi querySelector(".loading") / (".loading__digits"); tra ve null la
   // no nem loi va chet ca cum (Lenis, splitting, tilt, barba). Nen dung lai mot ban
   // rong, AN hoan toan, dung cau truc cu — khong ai thay, ma bundle van tim duoc.
-  var loading = document.querySelector(".loading");
-  if (!loading) {
-    loading = document.createElement("div");
-    loading.className = "loading is-stub";
-    loading.setAttribute("aria-hidden", "true");
-    var lc = document.createElement("div");
-    lc.className = "loading__content";
-    lc.innerHTML = '<p class="loading__digits"><span>0</span>%</p>' +
-      '<svg class="loading__logo" viewBox="0 0 730 883" width="26" height="32" fill="none"></svg>' +
-      '<p class="loading__digits"><span>0</span>%</p>';
-    loading.appendChild(lc);
-    (document.body || root).appendChild(loading);
+  // Stub tao SAU khi bundle da chay xong (DOMContentLoaded), khong tao ngay:
+  // bundle template chay luc load va hoi ".loading" ngay lap tuc. Khong co thi no
+  // vao thang trang; co thi no chay bo dem 0-100% roi tre khoi dong ~1s.
+  // Giu y nhu hien tai (bundle thay khong co) du boot.js dung truoc hay sau bundle.
+  var loading = null, stubDone = false;
+  function ensureStub() {
+    if (stubDone) return;
+    stubDone = true;
+    loading = document.querySelector(".loading");
+    if (!loading) {
+      loading = document.createElement("div");
+      loading.className = "loading is-stub";
+      loading.setAttribute("aria-hidden", "true");
+      var lc = document.createElement("div");
+      lc.className = "loading__content";
+      lc.innerHTML = '<p class="loading__digits"><span>0</span>%</p>' +
+        '<svg class="loading__logo" viewBox="0 0 730 883" width="26" height="32" fill="none"></svg>' +
+        '<p class="loading__digits"><span>0</span>%</p>';
+      loading.appendChild(lc);
+      (document.body || root).appendChild(loading);
+    }
+  }
+  if (document.readyState === "complete") ensureStub();
+  else {
+    document.addEventListener("DOMContentLoaded", ensureStub);
+    window.addEventListener("load", ensureStub);   // du phong neu DCL da qua
   }
 
   // ---------- dung overlay ----------
@@ -188,6 +202,17 @@
     });
   }
 
+  // LUOI AN TOAN CUOI (khong phu thuoc requestAnimationFrame): neu chuoi thoat bi
+  // treo (tab chay nen, may yeu, rAF bi bop) thi overlay full-man hinh se che trang
+  // va chan moi cu bam -> "phai reload moi bam duoc". Qua moc nay go han, idempotent.
+  setTimeout(function () {
+    if (raf) cancelAnimationFrame(raf);
+    if (boot.parentNode) boot.parentNode.removeChild(boot);
+    if (edge.parentNode) edge.parentNode.removeChild(edge);
+    root.classList.remove("is-booting");
+    root.classList.add("boot-done");
+  }, 9500);
+
   function skip() { if (!gone) finish(); }
   boot.addEventListener("click", skip);
   window.addEventListener("keydown", skip, { once: true });
@@ -229,6 +254,38 @@
   function start() {
     scan(document);
     // Barba chen trang moi vao DOM -> quet them phan tu moi
+    new MutationObserver(function (list) {
+      list.forEach(function (r) { [].forEach.call(r.addedNodes, scan); });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+})();
+
+/* avatar-fit: khung anh About tu theo ti le that cua anh -> anh nam TRON trong
+   khung, khong bi cat. Chi dat bien --ar (rong/cao) tren .about__img; CSS lo
+   phan kich thuoc (fallback 306/373 nhu cu neu JS khong chay). Bao window
+   "resize" sau khi doi khung de lop WebGL (neu con) do lai kich thuoc canvas. */
+(function () {
+  "use strict";
+  function fit(box) {
+    if (box.__fit) return;
+    var img = box.querySelector("img");
+    if (!img) return;
+    box.__fit = true;
+    function apply() {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      box.style.setProperty("--ar", (img.naturalWidth / img.naturalHeight).toFixed(4));
+      requestAnimationFrame(function () { window.dispatchEvent(new Event("resize")); });
+    }
+    if (img.complete) apply(); else img.addEventListener("load", apply);
+  }
+  function scan(root) {
+    if (!root.querySelectorAll) return;
+    if (root.matches && root.matches(".about__img")) fit(root);
+    [].forEach.call(root.querySelectorAll(".about__img"), fit);
+  }
+  function start() {
+    scan(document);
     new MutationObserver(function (list) {
       list.forEach(function (r) { [].forEach.call(r.addedNodes, scan); });
     }).observe(document.body, { childList: true, subtree: true });
