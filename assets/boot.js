@@ -88,6 +88,15 @@
     window.addEventListener("load", ensureStub);   // du phong neu DCL da qua
   }
 
+  // ---------- tu lan 2 trong phien: KHONG logo, chi fade nhe ----------
+  // Logo chi chay lan dau mo web. Bam sang trang khac (hoac reload trong cung tab)
+  // thi bo han overlay, go lop chong nhay ngay, de CSS fade noi dung vao.
+  if (seen) {
+    root.classList.add("boot-done", "soft-in");
+    root.classList.remove("is-booting");
+    return;
+  }
+
   // ---------- dung overlay ----------
   var boot = document.createElement("div");
   boot.className = "boot";
@@ -288,6 +297,90 @@
     scan(document);
     new MutationObserver(function (list) {
       list.forEach(function (r) { [].forEach.call(r.addedNodes, scan); });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+})();
+
+/* img-retry: anh bi loi hoac dung giua chung thi TU TAI LAI.
+   Van de: CSS giu anh trong dai o opacity:0 cho den khi anh bao "load" thanh cong.
+   Anh nao loi mang / treo thi khong bao gio co "load" -> o do trong den, dung nguyen
+   cho den khi reload trang. Module nay bat su kien "error" + canh anh bi treo, roi:
+     lan 1: tai lai dung URL do      lan 2: them tham so chong cache
+     lan 3: neu ca 2 lan truoc deu LOI (khong phai treo) -> bo "tr=" dung anh goc
+   Toi da 3 lan, het thi danh dau .img-failed (o van bam duoc, chi la nen toi + caption). */
+(function () {
+  "use strict";
+  var MAX = 3, STALL = 9000;
+
+  function noTr(u) {
+    return u.replace(/([?&])tr=[^&]*(&|$)/, function (m, a, b) { return b ? a : ""; });
+  }
+  function bust(u, n) {
+    return u + (u.indexOf("?") === -1 ? "?" : "&") + "_r=" + n + "-" + Date.now().toString(36);
+  }
+  function ok(img) { return img.complete && img.naturalWidth > 0; }
+  function state(img) {
+    if (img.__rt) return img.__rt;
+    var src = img.getAttribute("src") || "";
+    if (!src || src.indexOf("data:") === 0) return null;   // o chua co anh: bo qua
+    return (img.__rt = { base: src, n: 0, errs: 0, t: 0 });
+  }
+
+  function arm(img) {                       // canh anh treo: 9s ma chua xong thi tai lai
+    var st = state(img); if (!st) return;
+    clearTimeout(st.t);
+    st.t = setTimeout(function () { if (!ok(img)) retry(img, "stall"); }, STALL);
+  }
+  function retry(img, why) {
+    var st = state(img); if (!st || ok(img)) return;
+    clearTimeout(st.t);
+    if (why === "error") st.errs++;
+    if (st.n >= MAX) { img.classList.add("img-failed"); return; }
+    st.n++;
+    var url = st.base;
+    if (st.n === 2) url = bust(st.base, st.n);
+    if (st.n >= 3) url = bust(st.errs >= 2 ? noTr(st.base) : st.base, st.n);
+    st.t = setTimeout(function () { img.src = url; arm(img); }, 500 * st.n);
+  }
+
+  // "error" / "load" khong noi bot len -> bat o pha capture tren document
+  document.addEventListener("error", function (e) {
+    var el = e.target; if (el && el.tagName === "IMG") retry(el, "error");
+  }, true);
+  document.addEventListener("load", function (e) {
+    var el = e.target; if (!el || el.tagName !== "IMG") return;
+    if (el.__rt) clearTimeout(el.__rt.t);
+    el.classList.remove("img-failed");
+    // index.html danh dau o Project la "is-empty" neu anh loi luc load -> go di khi anh ve duoc
+    var slot = el.closest && el.closest(".is-empty");
+    if (slot && el.naturalWidth) slot.classList.remove("is-empty");
+  }, true);
+
+  var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function (list) {
+    list.forEach(function (x) {
+      if (!x.isIntersecting) return;
+      io.unobserve(x.target);
+      if (!ok(x.target)) arm(x.target);
+    });
+  }, { rootMargin: "300px" }) : null;
+
+  function watch(img) {
+    if (img.__w) return;
+    img.__w = 1;
+    if (!state(img) || ok(img)) return;
+    if (io) io.observe(img); else arm(img);
+  }
+  function scan(root) {
+    if (root.tagName === "IMG") watch(root);
+    else if (root.querySelectorAll) [].forEach.call(root.querySelectorAll("img"), watch);
+  }
+  function start() {
+    scan(document.documentElement);
+    new MutationObserver(function (list) {           // barba chen trang moi vao DOM
+      list.forEach(function (r) {
+        [].forEach.call(r.addedNodes, function (n) { if (n.nodeType === 1) scan(n); });
+      });
     }).observe(document.body, { childList: true, subtree: true });
   }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);

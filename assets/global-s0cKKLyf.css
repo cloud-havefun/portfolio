@@ -113,3 +113,7 @@ html.is-booting,html.is-booting body{overflow:hidden}
 .about__img img,.selected__el__img img{width:100%;height:100%;object-fit:cover;object-position:center}
 .about__img img{object-position:top}
 .selected__el__img:before{display:none}
+
+/* fade nhe khi vao trang (tu lan 2 trong phien, khong con logo) */
+@keyframes softIn{from{opacity:0}to{opacity:1}}
+html.soft-in [data-barba="container"]{animation:softIn .4s ease backwards}
