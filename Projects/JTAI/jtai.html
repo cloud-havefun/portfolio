@@ -164,7 +164,7 @@
 <div class="footer__credits">
 <ul class="footer__socials">
 <li class="footer__socials__el">
-<a class="text-lg text-white" data-splitting="" href="https://zalo.me/0326508150" rel="noreferrer" target="_blank">
+<a class="text-lg text-white" data-splitting="" data-zalo="" href="https://zaloapp.com/qr/p/14ocmv5q8kl5" rel="noreferrer" target="_blank">
 <span>Zalo</span>
 </a>
 </li>
@@ -327,40 +327,74 @@
       });
     }
 
-    // Tai xong anh MOI roi moi doi -> khong con nhay khung, khong con thay anh vo
+    // ---- Bo nho anh lon: tai TRUOC de bam Next la doi ngay, khong phai doi mang ----
+    // Moi anh chi tai 1 lan (cache theo so thu tu). decode() giai nen anh ngoai
+    // luong chinh truoc khi gan vao trang -> luc chuyen khong bi giat khung.
+    var cache = {};
+    function preload(i) {
+      if (!PHOTOS.length) return null;
+      i = (i + PHOTOS.length) % PHOTOS.length;
+      if (cache[i]) return cache[i];
+      var im = new Image();
+      im.decoding = "async";
+      cache[i] = new Promise(function (done) {
+        im.onload = function () {
+          if (im.decode) im.decode().then(function () { done(im); }, function () { done(im); });
+          else done(im);
+        };
+        im.onerror = function () { done(im); };
+      });
+      im.src = sized(PHOTOS[i][0], 1600);
+      return cache[i];
+    }
+
+    // Doi anh: KHONG khoa nut nua. Bam lien tiep thi chi anh cuoi cung duoc hien.
     function paintPhoto(i) {
-      if (busy) return;
+      if (!PHOTOS.length) return;
       at = (i + PHOTOS.length) % PHOTOS.length;
-      var idx = at;
-      busy = true;
-      spinner(true);
-      var pre = new Image();
-      pre.onload = pre.onerror = function () {
-        if (idx !== at) { busy = false; return; }
+      var idx = at, shown = false;
+      if (PHOTOS.length > 1) {
+        nav.classList.add("is-on");
+        counter.textContent = (idx + 1) + " / " + PHOTOS.length;
+      }
+      // Anh da co san thi doi ngay; chi hien vong xoay neu phai cho > 150ms
+      setTimeout(function () { if (!shown && idx === at) spinner(true); }, 150);
+      preload(idx).then(function (pre) {
+        shown = true;
+        if (idx !== at) return;          // nguoi xem da bam sang anh khac
+        spinner(false);
         var img = document.createElement("img");
         img.className = "vlb__img";
         img.src = pre.src;
         img.alt = PHOTOS[idx][1] || "";
-        var old = stage.querySelector(".vlb__img");
+        var olds = [].slice.call(stage.querySelectorAll(".vlb__img"));
         stage.appendChild(img);
         requestAnimationFrame(function () {
           img.classList.add("is-on");
-          if (old) {
+          olds.forEach(function (old) {
             old.classList.remove("is-on");
             setTimeout(function () { old.remove(); }, 360);
-          }
+          });
         });
         elTitle.textContent = PHOTOS[idx][1] || "";
         elDesc.textContent = "";
-        if (PHOTOS.length > 1) {
-          nav.classList.add("is-on");
-          counter.textContent = (idx + 1) + " / " + PHOTOS.length;
-        }
-        spinner(false);
-        busy = false;
-      };
-      pre.src = sized(PHOTOS[idx][0], 1600);
+      });
+      // tai truoc cac anh ke ben theo huong hay bam
+      preload(idx + 1); preload(idx + 2); preload(idx - 1);
     }
+
+    // Tai ngam toan bo anh sau khi trang tai xong (3 anh mot luc, khong tranh bang thong
+    // voi anh tren trang). Mo lightbox ra la anh da nam san trong bo nho.
+    if (PHOTOS.length) {
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          var q = PHOTOS.map(function (_, k) { return k; });
+          function next() { if (q.length) preload(q.shift()).then(next); }
+          next(); next(); next();
+        }, 1500);
+      });
+    }
+
     function showPhoto(i) {
       if (!PHOTOS.length) return;
       mode = "photo";

@@ -315,3 +315,81 @@
   }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
 })();
+
+/* =============================================================================
+   ZALO: bam chu "Zalo" -> hien popup ma QR thay vi mo link.
+   - Link trong HTML la link QR ca nhan cua Zalo (zaloapp.com/qr/p/...), KHONG
+     chua so dien thoai. JS hong thi bam van mo duoc Zalo.
+   - Anh QR nam o assets/zalo-qr.svg. Neu doi ma QR trong app Zalo:
+     thay file svg do + sua ZALO_URL ben duoi + sua href cac the a[data-zalo].
+   ============================================================================= */
+(function () {
+  "use strict";
+
+  var ZALO_URL = "https://zaloapp.com/qr/p/14ocmv5q8kl5";
+  var me = document.currentScript;
+  var QR_SRC = new URL("zalo-qr.svg", me && me.src ? me.src : location.href).href;
+
+  var box = null, lastFocus = null;
+
+  function build() {
+    if (box) return;
+    box = document.createElement("div");
+    box.className = "zqr";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-label", "Zalo");
+    box.setAttribute("data-lenis-prevent", "");
+    box.innerHTML =
+      '<div class="zqr__box">' +
+        '<div class="zqr__bar mono text-sm uppercase">' +
+          '<p class="zqr__title serif uppercase">Zalo</p>' +
+          '<button class="btn btn--sm zqr__close" type="button">Close ✕</button>' +
+        '</div>' +
+        '<div class="zqr__card"><img class="zqr__code" alt="Zalo QR code" width="240" height="240" src="' + QR_SRC + '"></div>' +
+        '<p class="zqr__hint mono text-sm uppercase">Scan with the Zalo app</p>' +
+        '<a class="btn mono text-sm uppercase zqr__open" href="' + ZALO_URL + '" target="_blank" rel="noreferrer">Open in Zalo <span>→</span></a>' +
+      '</div>';
+    document.body.appendChild(box);
+
+    box.addEventListener("click", function (e) {
+      if (e.target === box || e.target.closest(".zqr__close")) close();
+    });
+  }
+
+  function isOpen() { return box && box.classList.contains("is-open"); }
+
+  function open() {
+    build();
+    lastFocus = document.activeElement;
+    // ep trinh duyet ve trang thai dong truoc roi moi bat -> transition chay ca lan dau
+    box.getBoundingClientRect();
+    box.classList.add("is-open");
+    document.body.style.overflow = "hidden";
+    var btn = box.querySelector(".zqr__close");
+    try { btn.focus({ preventScroll: true }); } catch (e) { }
+  }
+
+  function close() {
+    if (!isOpen()) return;
+    box.classList.remove("is-open");
+    // lightbox / luoi anh dang mo thi giu khoa cuon cho chung
+    var other = document.querySelector(".vlb.is-open, .pgrid.is-open");
+    if (!other) document.body.style.overflow = "";
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus({ preventScroll: true }); } catch (e) { } }
+  }
+
+  // capture: chay truoc moi handler khac (hieu ung link, Barba...) de chan mo link
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest("a[data-zalo]") : null;
+    if (!a) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // mo tab moi thi de mo link
+    e.preventDefault();
+    e.stopPropagation();
+    open();
+  }, true);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && isOpen()) close();
+  });
+})();
