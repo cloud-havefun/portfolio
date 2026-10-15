@@ -11,7 +11,7 @@
 
    Luong chay:
    - LAN DAU MOI PHIEN (trang nao cung vay, ke ca mo thang link project):
-       7 manh logo bay ve rap lai + timecode 24fps -> hien "Click to enter"
+       7 manh logo bay ve rap lai -> hien "Click to enter"
        -> nguoi xem bam (hoac go phim bat ky) -> logo mo di -> ca man mo dan
        -> vao trang.
    - CAC LAN SAU TRONG PHIEN: trang moi hien ra bang mot cu fade nhe.
@@ -44,7 +44,6 @@
   var GATE_OUT  = SLOW ? 300 : 900;   // ca man mo dan ra trang chu
   var PAGE_IN   = SLOW ? 250 : 700;   // fade vao moi trang (cac lan sau)
   var PAGE_OUT  = SLOW ? 200 : 500;   // fade toi khi roi trang
-  var FPS = 24;
 
   var root = document.documentElement;
   var host = document.body || root;
@@ -57,6 +56,11 @@
     ".boot{transition:opacity " + GATE_OUT + "ms cubic-bezier(.4,0,.2,1)}" +
     ".boot.is-fading{opacity:0;pointer-events:none}" +
     ".boot:focus{outline:none}" +
+    // Chi con logo + dong chu. Dong chu duoc dat bang absolute ngay duoi logo,
+    // nen logo nam DUNG TAM man hinh (khong bi day len vi co chu ben duoi).
+    ".boot .boot__inner{position:relative;display:block;gap:0}" +
+    ".boot .boot__enter{position:absolute;left:50%;top:100%;transform:translateX(-50%);" +
+      "margin-top:clamp(28px,3.6vw,46px);padding-left:.22em}" +
     ".boot .boot__inner.is-gone{animation:none;opacity:0;transition:opacity " + LOGO_OUT + "ms ease}" +
     ".boot__enter{margin:0;color:#fff;font-size:.6875rem;letter-spacing:.22em;white-space:nowrap;opacity:0;transition:opacity .6s ease}" +
     ".boot__enter.is-on{opacity:.9;animation:bootPulse 2.4s ease-in-out .6s infinite}" +
@@ -131,16 +135,6 @@
       svg.appendChild(p);
     });
 
-    var meter = document.createElement("div");
-    meter.className = "boot__meter";
-    var rule = document.createElement("span");
-    rule.className = "boot__rule";
-    var tc = document.createElement("p");
-    tc.className = "boot__tc mono uppercase";
-    tc.textContent = "00:00:00:00";
-    meter.appendChild(rule);
-    meter.appendChild(tc);
-
     var hint = document.createElement("p");
     hint.className = "boot__enter mono uppercase";
     hint.textContent = "Click to enter";
@@ -148,25 +142,11 @@
     var wrap = document.createElement("div");
     wrap.className = "boot__inner";
     wrap.appendChild(svg);
-    wrap.appendChild(meter);
     wrap.appendChild(hint);
     boot.appendChild(wrap);
 
     host.insertBefore(boot, host.firstChild);
     root.classList.add("is-booting");
-
-    // ---------- timecode 24fps (dem theo dong ho that) ----------
-    var t0 = performance.now();
-    var span = SLOW ? 300 : ASSEMBLE;
-    var raf = 0;
-    function pad(n) { return (n < 10 ? "0" : "") + n; }
-    function tick(now) {
-      var ms = Math.min(now - t0, span);
-      var f = Math.round(ms / 1000 * FPS);
-      tc.textContent = "00:00:" + pad(Math.floor(f / FPS)) + ":" + pad(f % FPS);
-      if (ms < span) raf = requestAnimationFrame(tick);
-    }
-    raf = requestAnimationFrame(tick);
 
     var hintTimer = setTimeout(function () { hint.classList.add("is-on"); }, SLOW ? 300 : ASSEMBLE);
 
@@ -176,7 +156,6 @@
       if (gone) return;
       gone = true;
       clearTimeout(hintTimer);
-      if (raf) cancelAnimationFrame(raf);
       window.removeEventListener("keydown", onKey);
       try { sessionStorage.setItem(KEY, "1"); } catch (e) { }
 
