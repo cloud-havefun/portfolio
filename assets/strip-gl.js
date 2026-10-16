@@ -14,9 +14,15 @@
    - Bam vao o -> goi thang el.click() tren phan tu DOM goc, nen toan bo logic
      lightbox san co duoc dung lai nguyen ven, khong viet lai dong nao.
 
+   - Tha tay ra la dai tu DUNG o dau video gan nhat (theo da vuot), khong troi tu do.
+   - O nao bi canvas cat ngang (lo ra mot phan) thi phan lo ra mo dan. O nam tron
+     trong khung thi giu nguyen, ke ca khi sat mep.
+   - Goc tren ben phai moi dai co mot mui ten nho bao con video ben canh.
+     Bam vao: sang video ke. Toi cuoi dai: mui ten quay dau, bam de ve dau.
+
    An toan:
    - prefers-reduced-motion, khong co WebGL, CDN hong, anh bi chan CORS
-     -> tu dong tra ve dai CSS cu. Trang khong bao gio trang.
+     -> tu dong tra ve dai CSS cu (van co snap + mui ten). Trang khong bao gio trang.
    ============================================================================= */
 (function () {
   "use strict";
@@ -25,6 +31,95 @@
 
   var strips = document.querySelectorAll(".hstrip");
   if (!strips.length) return;
+
+  /* --------------------------------------------------------------------------
+     Mui ten goc tren ben phai. Gan cho MOI dai, ca khi khong co WebGL.
+     Dai CSS thuong: tu nghe su kien scroll. Dai WebGL: GLStrip goi strip.__arrow.set().
+     -------------------------------------------------------------------------- */
+  var HEAD = '<svg class="strip-arrow__head" viewBox="0 0 8 9" aria-hidden="true"><path d="M7 4.5L0.25 8.4V0.6Z"/></svg>';
+  // Mui ten nam NGOAI dai, ngay phia tren mep phai cac o -> khong de len thumb.
+  // Gan vao the cha cua dai (position:relative) va tu do lai vi tri moi khi doi co.
+  function Arrow(strip) {
+    var self = this;
+    this.strip = strip;
+    this.end = false;
+    var host = this.host = strip.parentNode;
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    var el = this.el = document.createElement("button");
+    el.type = "button";
+    el.className = "strip-arrow mono uppercase";
+    el.setAttribute("aria-label", "Next");
+    el.innerHTML = '<span class="strip-arrow__label">More</span>' +
+      '<span class="strip-arrow__icon" aria-hidden="true"><span class="strip-arrow__line"></span>' + HEAD + '</span>';
+    this.label = el.querySelector(".strip-arrow__label");
+    host.appendChild(el);
+    el.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (strip.__gl) { if (self.end) strip.__gl.toStart(); else strip.__gl.step(1); return; }
+      self.nativeStep();
+    });
+    this.onScroll = function () { if (!strip.__gl) self.nativeSync(); };
+    this.onResize = function () { self.place(); self.onScroll(); };
+    strip.addEventListener("scroll", this.onScroll, { passive: true });
+    window.addEventListener("resize", this.onResize);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(this.onResize);
+    window.addEventListener("load", this.onResize);
+    this.place();
+    this.nativeSync();
+  }
+  // Dat mui ten: canh phai theo mep noi dung cua dai, day len tren mep tren cao nhat cua cac o.
+  Arrow.prototype.place = function () {
+    var s = this.strip, hr = this.host.getBoundingClientRect(), sr = s.getBoundingClientRect();
+    var st = getComputedStyle(s), padR = parseFloat(st.paddingRight) || 0;
+    var top = Infinity;
+    [].forEach.call(s.querySelectorAll(".hstrip__item"), function (it) {
+      top = Math.min(top, it.getBoundingClientRect().top);
+    });
+    if (top === Infinity) top = sr.top;
+    var gap = window.innerWidth < 1024 ? 10 : 14;
+    var y = top - this.el.offsetHeight - gap;
+    // Neu ngay tren dai co nhan muc (vd "Social Cuts ►") thi dat mui ten thang hang voi nhan do.
+    var prev = s.previousElementSibling;
+    if (prev && prev.offsetHeight) {
+      var pr = prev.getBoundingClientRect();
+      // bo phan dich chuyen cua hieu ung hien chu (translateY) -> lay vi tri cuoi cung
+      var m = /matrix\(([^)]+)\)/.exec(getComputedStyle(prev).transform || "");
+      var ty = m ? parseFloat(m[1].split(",")[5]) || 0 : 0;
+      var pTop = pr.top - ty, pBot = pr.bottom - ty;
+      if (pBot <= top && top - pBot < 90) y = pTop + pr.height / 2 - this.el.offsetHeight / 2;
+    }
+    this.el.style.top = Math.round(y - hr.top) + "px";
+    this.el.style.right = Math.max(0, Math.round(hr.right - sr.right + padR)) + "px";
+  };
+  // more = con noi dung de keo; end = da toi cuoi
+  Arrow.prototype.set = function (more, end) {
+    this.end = !!end;
+    this.el.classList.toggle("is-off", !more);
+    this.el.classList.toggle("is-end", !!end);
+    this.label.textContent = end ? "Back" : "More";
+    this.el.setAttribute("aria-label", end ? "Back to start" : "Next");
+  };
+  // ---- dai CSS thuong (khong WebGL) ----
+  Arrow.prototype.nativeSync = function () {
+    var s = this.strip, max = s.scrollWidth - s.clientWidth;
+    this.set(max > 4, max > 4 && s.scrollLeft >= max - 4);
+  };
+  Arrow.prototype.nativeStep = function () {
+    var s = this.strip;
+    if (this.end) { s.scrollTo({ left: 0, behavior: "smooth" }); return; }
+    var pad = parseFloat(getComputedStyle(s).paddingLeft) || 0;
+    var sr = s.getBoundingClientRect(), items = s.querySelectorAll(".hstrip__item");
+    for (var i = 0; i < items.length; i++) {
+      var x = items[i].getBoundingClientRect().left - sr.left + s.scrollLeft - pad;
+      if (x > s.scrollLeft + 4) { s.scrollTo({ left: x, behavior: "smooth" }); return; }
+    }
+  };
+  [].forEach.call(strips, function (el) {
+    try { el.__arrow = new Arrow(el); } catch (e) { }
+  });
+
   if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   if (!hasWebGL()) return;
 
@@ -73,20 +168,34 @@
     "uniform float uStrength;",
     "uniform float uViewW;",
     "varying vec2 vUv;",
+    "varying float vX;",
     "void main(){",
     "  vUv = uv;",
     "  vec4 w = modelMatrix * vec4(position, 1.0);",
+    "  vX = w.x;",
     "  float t = clamp(w.x / uViewW, -0.5, 0.5);",
     "  w.z += cos(t * 3.141592653589793) * -uStrength;",
     "  gl_Position = projectionMatrix * viewMatrix * w;",
     "}"
   ].join("\n");
 
+  // Fade rieng cho o bi canvas cat ngang. uFadeL/uFadeR = 0..1: o lo ra bao nhieu
+  // thi mo bay nhieu -> chuyen muot, khong bat/tat dot ngot khi o vua cham mep.
   var FRAG = [
     "uniform sampler2D uTex;",
+    "uniform float uViewW;",
+    "uniform float uFadeW;",
+    "uniform float uFadeL;",
+    "uniform float uFadeR;",
     "varying vec2 vUv;",
+    "varying float vX;",
     "void main(){",
     "  vec4 c = texture2D(uTex, vUv);",
+    "  float h = uViewW * 0.5;",
+    "  float l = smoothstep(-h, -h + uFadeW, vX);",
+    "  float r = 1.0 - smoothstep(h - uFadeW, h, vX);",
+    "  l = mix(0.14, 1.0, l); r = mix(0.14, 1.0, r);",   // giu lai mot bong mo o sat mep
+    "  c.a *= mix(1.0, l, uFadeL) * mix(1.0, r, uFadeR);",
     "  if (c.a < 0.02) discard;",
     "  gl_FragColor = c;",
     "}"
@@ -129,8 +238,10 @@
     this.inertia = 0; this.vel = 0; this.strength = 0;
     this.hover = -1; this.down = false; this.moved = 0; this.px = 0;
     this.dirty = true; this.raf = 0; this.running = false;
+    this.snaps = [0]; this.wheelT = 0;
 
     this.tickBound = this.tick.bind(this);
+    strip.__gl = this;
     this.build();
   }
 
@@ -178,7 +289,10 @@
       var mat = new T.ShaderMaterial({
         vertexShader: VERT,
         fragmentShader: FRAG,
-        uniforms: { uTex: { value: self.blank }, uStrength: { value: 0 }, uViewW: { value: 1 } },
+        uniforms: {
+          uTex: { value: self.blank }, uStrength: { value: 0 }, uViewW: { value: 1 },
+          uFadeW: { value: 1 }, uFadeL: { value: 0 }, uFadeR: { value: 0 }
+        },
         transparent: true, depthTest: false, depthWrite: false, side: T.DoubleSide
       });
       var m = new T.Mesh(self.geo, mat);
@@ -191,6 +305,7 @@
     this.place();
     this.events();
     this.watch();
+    this.report();
   };
 
   /* ---------- Do lai moi thu tu DOM (CSS van la nguon duy nhat) ---------- */
@@ -201,6 +316,7 @@
     this.W = Math.max(1, strip.clientWidth);
     this.H = Math.max(1, strip.clientHeight);
     var padR = parseFloat(getComputedStyle(strip).paddingRight) || 0;
+    var padL = parseFloat(getComputedStyle(strip).paddingLeft) || 0;
     var right = 0;
 
     this.cards.forEach(function (c) {
@@ -233,8 +349,46 @@
 
     this.contentW = right + padR;
     this.maxScroll = Math.max(0, this.contentW - this.W);
-    this.target = clamp(this.target, 0, this.maxScroll);
+
+    // Diem dung: mep trai moi o thang hang voi padding trai cua dai.
+    // O cuoi khong keo toi duoc thi dung o maxScroll.
+    var max = this.maxScroll, snaps = [];
+    this.cards.forEach(function (c) {
+      var v = clamp(c.x - padL, 0, max);
+      if (!snaps.length || v - snaps[snaps.length - 1] > 2) snaps.push(v);
+    });
+    if (max - snaps[snaps.length - 1] > 2) snaps.push(max);
+    this.snaps = snaps.length ? snaps : [0];
+
+    this.target = this.nearest(clamp(this.target, 0, this.maxScroll));
     this.scroll = clamp(this.scroll, 0, this.maxScroll);
+  };
+
+  /* ---------- Diem dung ---------- */
+  P.nearestIndex = function (v) {
+    var best = 0, d = Infinity;
+    for (var i = 0; i < this.snaps.length; i++) {
+      var k = Math.abs(this.snaps[i] - v);
+      if (k < d) { d = k; best = i; }
+    }
+    return best;
+  };
+  P.nearest = function (v) { return this.snaps[this.nearestIndex(v)]; };
+  P.goTo = function (v) {
+    this.inertia = 0;
+    this.target = clamp(v, 0, this.maxScroll);
+    this.report();
+    this.start();
+  };
+  P.step = function (dir) {
+    var i = this.nearestIndex(this.target) + dir;
+    this.goTo(this.snaps[clamp(i, 0, this.snaps.length - 1)]);
+  };
+  P.toStart = function () { this.goTo(0); };
+  // bao cho mui ten: con keo duoc khong / da toi cuoi chua
+  P.report = function () {
+    var a = this.strip.__arrow;
+    if (a) a.set(this.maxScroll > 4, this.maxScroll > 4 && this.target >= this.maxScroll - 2);
   };
 
   /* ---------- Ve mot o ra canvas 2D roi nap len GPU ---------- */
@@ -347,14 +501,20 @@
 
   P.place = function () {
     var W = this.W, H = this.H;
+    var fadeW = Math.min(220, W * 0.2);           // be ngang vung mo o moi mep
+    var ramp = 36;                                 // lo ra 36px la mo du muc
     for (var i = 0; i < this.meshes.length; i++) {
-      var c = this.cards[i], m = this.meshes[i];
+      var c = this.cards[i], m = this.meshes[i], u = m.material.uniforms;
       m.scale.set(c.w, c.h, 1);
       m.position.x = c.x + c.w / 2 - W / 2 - this.scroll;
       m.position.y = -(c.y + c.h / 2 - H / 2);
       m.visible = (m.position.x + c.w / 2 > -W * 0.6) && (m.position.x - c.w / 2 < W * 1.6);
-      m.material.uniforms.uStrength.value = this.strength;
-      m.material.uniforms.uViewW.value = W;
+      u.uStrength.value = this.strength;
+      u.uViewW.value = W;
+      u.uFadeW.value = fadeW;
+      // o bi cat bao nhieu px o moi mep (am = nam tron trong khung)
+      u.uFadeL.value = clamp((-W / 2 - (m.position.x - c.w / 2)) / ramp, 0, 1);
+      u.uFadeR.value = clamp(((m.position.x + c.w / 2) - W / 2) / ramp, 0, 1);
     }
   };
 
@@ -457,7 +617,8 @@
       self.moved += Math.abs(dx);
       if (self.moved > 6 && e.cancelable) e.preventDefault();
       self.target = clamp(self.target - dx, 0, self.maxScroll);
-      self.vel = -dx;
+      // van toc lam muot qua vai su kien, de cu vuot cuoi khong bi giat
+      self.vel = self.vel * 0.55 + (-dx) * 0.45;
     });
 
     function up(e) {
@@ -470,13 +631,17 @@
         var i = self.hit(e);
         if (i > -1) self.cards[i].el.click();
       } else {
-        self.inertia = clamp(self.vel * 6, -600, 600);
+        // Dung o video gan nhat voi cho dai SE troi toi theo da vuot.
+        // Gioi han quang troi ~1 man de vuot manh cung chi qua vai video.
+        var fling = clamp(self.vel * 9, -self.W, self.W);
+        self.goTo(self.nearest(clamp(self.target + fling, 0, self.maxScroll)));
       }
     }
     cv.addEventListener("pointerup", up);
     cv.addEventListener("pointercancel", function () {
       self.down = false;
       cv.classList.remove("is-grabbing");
+      self.goTo(self.nearest(self.target));
     });
     cv.addEventListener("pointerleave", function () { if (!self.down) self.setHover(-1); });
     cv.addEventListener("dragstart", function (e) { e.preventDefault(); });
@@ -489,6 +654,10 @@
       e.stopPropagation();
       self.inertia = 0;
       self.target = clamp(self.target + dx, 0, self.maxScroll);
+      self.start();
+      // trackpad ngung cuon 140ms -> hut vao video gan nhat
+      clearTimeout(self.wheelT);
+      self.wheelT = setTimeout(function () { self.goTo(self.nearest(self.target)); }, 140);
     }, { passive: false });
   };
 
@@ -533,6 +702,7 @@
     }
     this.lazy();
     this.place();
+    this.report();
     this.dirty = true;
     if (!this.running) this.renderer.render(this.scene, this.camera);
   };
@@ -555,5 +725,7 @@
     this.renderer.dispose();
     if (this.canvas.parentNode) this.canvas.parentNode.removeChild(this.canvas);
     this.strip.classList.remove("is-gl");
+    if (this.strip.__gl === this) this.strip.__gl = null;
+    if (this.strip.__arrow) this.strip.__arrow.nativeSync();
   };
 })();
