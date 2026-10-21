@@ -41,8 +41,9 @@
    - Lan dau: lay theo ngon ngu trinh duyet (vi-* -> VI, con lai EN).
      Nguoi xem gat nut -> nho vao localStorage "cloud-lang".
    - 3 font goc (PP Eiko / Neue Montreal / Mono) KHONG co dau tieng Viet.
-     Khi chon VI, file nay khai bao lai 3 ten font do tro sang font thay the
-     (fonts/VI/): Cormorant Garamond Light, Inter Tight, Geist Mono.
+     Khi chon VI, rieng nhung dong co dau tieng Viet duoc chuyen sang font
+     thay the (fonts/VI/): Eiko -> Cormorant Garamond Light (phong to 117%),
+     Neue Montreal -> Inter Tight, Mono -> Geist Mono. Chu tieng Anh giu font goc.
      Ban EN khong tai them byte nao.
    ============================================================================= */
 (function () {
@@ -63,32 +64,66 @@
   }
 
   // ---- font thay the cho tieng Viet ----
+  // Chi nhung dong CO DAU tieng Viet moi doi font; chu tieng Anh giu y font goc
+  // (Skills, ten du an, "CLOUD"...). size-adjust: phong font thay the cho bang
+  // chieu cao chu hoa cua font goc (Cormorant thap hon Eiko ~15%).
   var LATIN = "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD";
   var VIET = "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB";
-  // [ten font goc, do dam goc, file thay the]
+  // [ten font thay the, file, size-adjust, nhan ra font goc qua ten]
   var FONTS = [
-    ["PP Eiko", 100, "cormorant-garamond-300"],
-    ["PP Neue Montreal", 500, "inter-tight-500"],
-    ["PP Neue Montreal Mono", 500, "geist-mono-500"]
+    ["VI Serif", "cormorant-garamond-300", "117%", /Eiko/i],
+    ["VI Mono",  "geist-mono-500",         "100%", /Mono/i],
+    ["VI Sans",  "inter-tight-500",        "100%", /Montreal/i]
   ];
-  var fontStyle = null;
-  function viFonts(on) {
-    if (on && !fontStyle) {
-      var css = "";
-      FONTS.forEach(function (f) {
-        [["latin", LATIN], ["vietnamese", VIET]].forEach(function (s) {
-          css += "@font-face{font-family:'" + f[0] + "';font-weight:" + f[1] + ";font-display:swap;" +
-            "src:url(" + FONT_DIR + f[2] + "-" + s[0] + ".woff2) format('woff2');unicode-range:" + s[1] + "}";
-        });
+  (function () {
+    var css = "";
+    FONTS.forEach(function (f) {
+      [["latin", LATIN], ["vietnamese", VIET]].forEach(function (s) {
+        css += "@font-face{font-family:'" + f[0] + "';font-display:swap;size-adjust:" + f[2] + ";" +
+          "src:url(" + FONT_DIR + f[1] + "-" + s[0] + ".woff2) format('woff2');unicode-range:" + s[1] + "}";
       });
-      fontStyle = document.createElement("style");
-      fontStyle.id = "vi-fonts";
-      fontStyle.textContent = css;
-      (document.head || root).appendChild(fontStyle);
-    } else if (!on && fontStyle) {
-      fontStyle.parentNode.removeChild(fontStyle);
-      fontStyle = null;
+    });
+    // Khai bao thoi chua tai: trinh duyet chi tai font khi co chu dung toi no.
+    var st = document.createElement("style");
+    st.id = "vi-fonts";
+    st.textContent = css;
+    (document.head || root).appendChild(st);
+  })();
+
+  var VN = /[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i;
+  var fixed = [];
+  // Dat font thay the (dung truoc font goc) cho 1 phan tu dang chua chu tieng Viet.
+  function fixEl(el) {
+    if (!el || el.nodeType !== 1 || el.__vf) return;
+    var ff = getComputedStyle(el).fontFamily || "";
+    if (/^["']?VI /.test(ff)) return;               // da thua huong tu phan tu cha
+    for (var i = 0; i < FONTS.length; i++) {
+      if (FONTS[i][3].test(ff)) {
+        el.style.fontFamily = "'" + FONTS[i][0] + "', " + ff;
+        el.__vf = true;
+        fixed.push(el);
+        return;
+      }
     }
+  }
+  function scan(node) {
+    if (!node) return;
+    if (node.nodeType === 3) { if (VN.test(node.data)) fixEl(node.parentNode); return; }
+    if (node.nodeType !== 1 || !VN.test(node.textContent)) return;
+    var w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null), t;
+    while ((t = w.nextNode())) if (VN.test(t.data)) fixEl(t.parentNode);
+  }
+  // Chu sinh ra sau (lightbox, popup Zalo, nut "Xem them", dong goi y...) cung duoc xu ly.
+  var mo = window.MutationObserver ? new MutationObserver(function (list) {
+    list.forEach(function (r) {
+      if (r.type === "characterData") scan(r.target);
+      else [].forEach.call(r.addedNodes, scan);
+    });
+  }) : null;
+  function watch(on) {
+    if (!mo) return;
+    if (on) mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    else mo.disconnect();
   }
 
   // ---- doi chu ----
@@ -105,7 +140,7 @@
     window.__lang = lang;
     root.lang = lang;
     root.classList.toggle("lang-vi", lang === "vi");
-    viFonts(lang === "vi");
+    watch(false);
     [].forEach.call(document.querySelectorAll("[data-vi]"), function (el) {
       if (el.__en == null) el.__en = el.innerHTML;
       el.innerHTML = lang === "vi" ? el.getAttribute("data-vi") : el.__en;
@@ -113,6 +148,13 @@
     swapAttr("data-vi-desc", "data-desc");
     swapAttr("data-vi-content", "content");
     swapAttr("data-vi-aria", "aria-label");
+    if (lang === "vi") {
+      scan(document.body || root);
+      watch(true);
+    } else {
+      fixed.forEach(function (el) { el.style.fontFamily = ""; el.__vf = false; });
+      fixed = [];
+    }
     window.dispatchEvent(new CustomEvent("cloud:lang", { detail: lang }));
   }
 
