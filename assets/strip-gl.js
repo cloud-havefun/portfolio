@@ -26,6 +26,7 @@
    ============================================================================= */
 (function () {
   "use strict";
+  function T(en, vi) { return window.__t ? window.__t(en, vi) : en; }
 
   var THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
 
@@ -48,8 +49,8 @@
     var el = this.el = document.createElement("button");
     el.type = "button";
     el.className = "strip-arrow mono uppercase";
-    el.setAttribute("aria-label", "Next");
-    el.innerHTML = '<span class="strip-arrow__label">More</span>' +
+    el.setAttribute("aria-label", T("Next", "Tiếp"));
+    el.innerHTML = '<span class="strip-arrow__label">' + T("More", "Xem thêm") + '</span>' +
       '<span class="strip-arrow__icon" aria-hidden="true"><span class="strip-arrow__line"></span>' + HEAD + '</span>';
     this.label = el.querySelector(".strip-arrow__label");
     host.appendChild(el);
@@ -98,8 +99,8 @@
     this.end = !!end;
     this.el.classList.toggle("is-off", !more);
     this.el.classList.toggle("is-end", !!end);
-    this.label.textContent = end ? "Back" : "More";
-    this.el.setAttribute("aria-label", end ? "Back to start" : "Next");
+    this.label.textContent = end ? T("Back", "Về đầu") : T("More", "Xem thêm");
+    this.el.setAttribute("aria-label", end ? T("Back to start", "Về đầu") : T("Next", "Tiếp"));
   };
   // ---- dai CSS thuong (khong WebGL) ----
   Arrow.prototype.nativeSync = function () {

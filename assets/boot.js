@@ -26,6 +26,175 @@
 
    Chinh toc do: xem khoi TIMING ngay ben duoi.
    ============================================================================= */
+/* =============================================================================
+   NGON NGU (EN / VI) — chay TRUOC moi thu khac trong file nay.
+
+   - Chu tieng Viet nam ngay trong HTML, tren chinh phan tu do:
+       data-vi="..."          -> thay noi dung (innerHTML) khi chon VI
+       data-vi-desc="..."     -> thay data-desc (mo ta video trong lightbox)
+       data-vi-content="..."  -> thay content cua the <meta>
+       data-vi-aria="..."     -> thay aria-label
+     Muon sua cau tieng Viet nao: tim cau tieng Anh trong HTML, sua data-vi
+     ngay ben canh. Phan tu khong co data-vi thi 2 ngon ngu giong nhau.
+   - Doi chu xong ROI bundle moi tach chu de chay animation (sau "cloud:enter"),
+     nen hieu ung chu van chay dung o ca 2 ngon ngu.
+   - Lan dau: lay theo ngon ngu trinh duyet (vi-* -> VI, con lai EN).
+     Nguoi xem gat nut -> nho vao localStorage "cloud-lang".
+   - 3 font goc (PP Eiko / Neue Montreal / Mono) KHONG co dau tieng Viet.
+     Khi chon VI, file nay khai bao lai 3 ten font do tro sang font thay the
+     (fonts/VI/): Cormorant Garamond Light, Inter Tight, Geist Mono.
+     Ban EN khong tai them byte nao.
+   ============================================================================= */
+(function () {
+  "use strict";
+
+  var KEY = "cloud-lang";
+  var me = document.currentScript;
+  var FONT_DIR = new URL("../fonts/VI/", me && me.src ? me.src : location.href).href;
+  var root = document.documentElement;
+
+  function detect() {
+    try {
+      var s = localStorage.getItem(KEY);
+      if (s === "vi" || s === "en") return s;
+    } catch (e) { }
+    var n = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+    return /^vi/i.test(n) ? "vi" : "en";
+  }
+
+  // ---- font thay the cho tieng Viet ----
+  var LATIN = "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD";
+  var VIET = "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB";
+  // [ten font goc, do dam goc, file thay the]
+  var FONTS = [
+    ["PP Eiko", 100, "cormorant-garamond-300"],
+    ["PP Neue Montreal", 500, "inter-tight-500"],
+    ["PP Neue Montreal Mono", 500, "geist-mono-500"]
+  ];
+  var fontStyle = null;
+  function viFonts(on) {
+    if (on && !fontStyle) {
+      var css = "";
+      FONTS.forEach(function (f) {
+        [["latin", LATIN], ["vietnamese", VIET]].forEach(function (s) {
+          css += "@font-face{font-family:'" + f[0] + "';font-weight:" + f[1] + ";font-display:swap;" +
+            "src:url(" + FONT_DIR + f[2] + "-" + s[0] + ".woff2) format('woff2');unicode-range:" + s[1] + "}";
+        });
+      });
+      fontStyle = document.createElement("style");
+      fontStyle.id = "vi-fonts";
+      fontStyle.textContent = css;
+      (document.head || root).appendChild(fontStyle);
+    } else if (!on && fontStyle) {
+      fontStyle.parentNode.removeChild(fontStyle);
+      fontStyle = null;
+    }
+  }
+
+  // ---- doi chu ----
+  function swapAttr(sel, attr) {
+    [].forEach.call(document.querySelectorAll("[" + sel + "]"), function (el) {
+      if (el["__en_" + attr] == null) el["__en_" + attr] = el.getAttribute(attr) || "";
+      el.setAttribute(attr, cur === "vi" ? el.getAttribute(sel) : el["__en_" + attr]);
+    });
+  }
+  var cur = "en";   // HTML goc la tieng Anh
+  function apply(lang) {
+    if (lang === cur) return;
+    cur = lang;
+    window.__lang = lang;
+    root.lang = lang;
+    root.classList.toggle("lang-vi", lang === "vi");
+    viFonts(lang === "vi");
+    [].forEach.call(document.querySelectorAll("[data-vi]"), function (el) {
+      if (el.__en == null) el.__en = el.innerHTML;
+      el.innerHTML = lang === "vi" ? el.getAttribute("data-vi") : el.__en;
+    });
+    swapAttr("data-vi-desc", "data-desc");
+    swapAttr("data-vi-content", "content");
+    swapAttr("data-vi-aria", "aria-label");
+    window.dispatchEvent(new CustomEvent("cloud:lang", { detail: lang }));
+  }
+
+  window.__lang = "en";
+  // __t("English", "Tieng Viet") -> chuoi theo ngon ngu dang chon (dung trong cac file JS)
+  window.__t = function (en, vi) { return window.__lang === "vi" ? vi : en; };
+  window.__setLang = function (lang, remember) {
+    if (remember) { try { localStorage.setItem(KEY, lang); } catch (e) { } }
+    apply(lang);
+  };
+
+  // ---- nut gat EN [ o ] VI (dung chung cho man mo dau va header) ----
+  var swCss = "" +
+    ".lsw{display:inline-flex;align-items:center;gap:.9em;margin:0;padding:.5em .25em;border:0;background:none;color:inherit;" +
+      "font-weight:inherit;line-height:1;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}" +
+    ".lsw:not(.mono){font-family:inherit}.lsw:not(.text-sm){font-size:inherit}" +
+    ".lsw:focus{outline:none}.lsw:focus-visible .lsw__track{box-shadow:0 0 0 2px rgba(255,255,255,.35)}" +
+    ".lsw__opt{opacity:.38;transition:opacity .5s cubic-bezier(.4,0,.2,1)}" +
+    ".lsw:not(.is-vi) .lsw__opt--en,.lsw.is-vi .lsw__opt--vi{opacity:1}" +
+    ".lsw__track{position:relative;flex:none;width:38px;height:20px;border:1px solid rgba(255,255,255,.38);border-radius:20px;" +
+      "transition:border-color .3s ease,box-shadow .3s ease}" +
+    ".lsw:hover .lsw__track{border-color:rgba(255,255,255,.85)}" +
+    ".lsw__knob{position:absolute;top:3px;left:3px;width:12px;height:12px;" +
+      "transition:transform .6s cubic-bezier(.65,0,.25,1)}" +
+    ".lsw.is-vi .lsw__knob{transform:translateX(18px)}" +
+    ".lsw__knob::after{content:'';position:absolute;inset:0;border-radius:12px;background:#fff}" +
+    // keo gian giot nuoc khi chay qua (2 ten keyframe de lan nao bam cung chay lai)
+    ".lsw.go-r .lsw__knob::after{animation:lswR .6s cubic-bezier(.65,0,.25,1)}" +
+    ".lsw.go-l .lsw__knob::after{animation:lswL .6s cubic-bezier(.65,0,.25,1)}" +
+    "@keyframes lswR{0%{transform:none}45%{transform:scaleX(1.75)}100%{transform:none}}" +
+    "@keyframes lswL{0%{transform:none}45%{transform:scaleX(1.75)}100%{transform:none}}" +
+    // vi tri tren header: mobile/tablet -> goc trai, ngang hang logo; desktop -> dung truoc "Work"
+    ".header__lang .lsw{color:#fff;font-size:.8125rem}" +
+    "@media (max-width:1023.98px){.header__lang{position:absolute;top:20px;left:18px;height:32px;display:flex;align-items:center}}" +
+    "@media (min-width:768px) and (max-width:1023.98px){.header__lang{left:45px}}" +
+    "@media (min-width:1280px){.header__nav__el.header__lang{margin-right:-40px}}" +
+    "@media (prefers-reduced-motion: reduce){.lsw__knob{transition-duration:.01s}.lsw .lsw__knob::after{animation:none!important}}";
+  var st = document.createElement("style");
+  st.textContent = swCss;
+  (document.head || root).appendChild(st);
+
+  // tao 1 nut gat; onChange(lang) duoc goi moi lan doi
+  window.__langSwitch = function (extraClass, onChange) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "lsw" + (extraClass ? " " + extraClass : "");
+    b.setAttribute("role", "switch");
+    b.setAttribute("aria-label", "Language / Ngôn ngữ — English / Tiếng Việt");
+    b.innerHTML = '<span class="lsw__opt lsw__opt--en" aria-hidden="true">EN</span>' +
+      '<span class="lsw__track" aria-hidden="true"><span class="lsw__knob"></span></span>' +
+      '<span class="lsw__opt lsw__opt--vi" aria-hidden="true">VI</span>';
+    function paint(lang) {
+      b.classList.toggle("is-vi", lang === "vi");
+      b.setAttribute("aria-checked", lang === "vi" ? "true" : "false");
+    }
+    paint(window.__lang);
+    // ngon ngu doi o noi khac (vd man mo dau) -> nut nay cap nhat theo, khong animation
+    window.addEventListener("cloud:lang", function (e) { paint(e.detail); });
+    b.set = function (lang) {
+      if ((lang === "vi") === b.classList.contains("is-vi")) return;
+      b.classList.remove("go-r", "go-l");
+      void b.offsetWidth;                       // cho animation chay lai
+      b.classList.add(lang === "vi" ? "go-r" : "go-l");
+      paint(lang);
+      if (onChange) onChange(lang);
+    };
+    b.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      b.set(b.classList.contains("is-vi") ? "en" : "vi");
+    });
+    b.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); b.set("vi"); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); b.set("en"); }
+      else if (e.key === " ") { e.preventDefault(); e.stopPropagation(); b.click(); }
+    });
+    return b;
+  };
+
+  apply(detect());
+})();
+
 (function () {
   "use strict";
 
@@ -59,8 +228,13 @@
     // Chi con logo + dong chu. Dong chu duoc dat bang absolute ngay duoi logo,
     // nen logo nam DUNG TAM man hinh (khong bi day len vi co chu ben duoi).
     ".boot .boot__inner{position:relative;display:block;gap:0}" +
-    ".boot .boot__enter{position:absolute;left:50%;top:100%;transform:translateX(-50%);" +
-      "margin-top:clamp(28px,3.6vw,46px);padding-left:.22em}" +
+    ".boot__foot{position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:clamp(28px,3.6vw,46px);" +
+      "display:flex;flex-direction:column;align-items:center;gap:clamp(18px,2.2vw,26px)}" +
+    ".boot .boot__enter{position:static;padding-left:.22em}" +
+    ".boot__enter__txt{display:inline-block;transition:opacity .26s ease,transform .26s ease,filter .26s ease}" +
+    ".boot__enter__txt.is-swap{opacity:0;transform:translateY(4px);filter:blur(2px)}" +
+    ".boot__lang{font-size:.6875rem;letter-spacing:.22em;color:#fff;padding:12px 16px;margin:-12px -16px;opacity:0;transform:translateY(6px);transition:opacity .7s ease .15s,transform .7s cubic-bezier(.2,.7,.2,1) .15s}" +
+    ".boot__foot.is-on .boot__lang{opacity:1;transform:none}" +
     ".boot .boot__inner.is-gone{animation:none;opacity:0;transition:opacity " + LOGO_OUT + "ms ease}" +
     ".boot__enter{margin:0;color:#fff;font-size:.6875rem;letter-spacing:.22em;white-space:nowrap;opacity:0;transition:opacity .6s ease}" +
     ".boot__enter.is-on{opacity:.9;animation:bootPulse 2.4s ease-in-out .6s infinite}" +
@@ -135,20 +309,44 @@
       svg.appendChild(p);
     });
 
+    var T = window.__t || function (en) { return en; };
     var hint = document.createElement("p");
     hint.className = "boot__enter mono uppercase";
-    hint.textContent = "Click to enter";
+    hint.innerHTML = '<span class="boot__enter__txt">' + T("Click to enter", "Nhấn để vào") + "</span>";
+    var hintTxt = hint.firstChild;
+    boot.setAttribute("aria-label", T("Click to enter", "Nhấn để vào"));
+
+    // Nut chon ngon ngu ngay duoi dong "Click to enter". Gat -> doi chu ca trang
+    // (dang bi man nay che nen nguoi xem khong thay nhay) + doi dong goi y.
+    var foot = document.createElement("div");
+    foot.className = "boot__foot";
+    foot.appendChild(hint);
+    var swapTimer = null;
+    if (window.__langSwitch) {
+      var sw = window.__langSwitch("boot__lang mono text-sm", function (lang) {
+        window.__setLang(lang, true);
+        var txt = lang === "vi" ? "Nhấn để vào" : "Click to enter";
+        boot.setAttribute("aria-label", txt);
+        clearTimeout(swapTimer);
+        hintTxt.classList.add("is-swap");
+        swapTimer = setTimeout(function () {
+          hintTxt.textContent = txt;
+          hintTxt.classList.remove("is-swap");
+        }, 260);
+      });
+      foot.appendChild(sw);
+    }
 
     var wrap = document.createElement("div");
     wrap.className = "boot__inner";
     wrap.appendChild(svg);
-    wrap.appendChild(hint);
+    wrap.appendChild(foot);
     boot.appendChild(wrap);
 
     host.insertBefore(boot, host.firstChild);
     root.classList.add("is-booting");
 
-    var hintTimer = setTimeout(function () { hint.classList.add("is-on"); }, SLOW ? 300 : ASSEMBLE);
+    var hintTimer = setTimeout(function () { foot.classList.add("is-on"); hint.classList.add("is-on"); }, SLOW ? 300 : ASSEMBLE);
 
     // ---------- bam de vao ----------
     var gone = false;
@@ -179,6 +377,13 @@
     function onKey(e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;   // Ctrl+R, Cmd+L... de trinh duyet tu lo
       if (e.key === "Tab") return;                       // de focus vao nut binh thuong
+      if (e.key === "Shift") return;
+      // Mui ten trai/phai: doi ngon ngu thay vi vao trang
+      if (sw && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        sw.set(e.key === "ArrowRight" ? "vi" : "en");
+        return;
+      }
       e.preventDefault();
       open();
     }
@@ -188,6 +393,31 @@
   }
 
   if (seen) fadeInPage(); else gate();
+
+  /* =========================================================================
+     NUT NGON NGU TREN HEADER: gat -> nut chay xong -> trang fade toi -> tai lai
+     bang ngon ngu moi (tai lai de animation chu cua template tach chu lai tu dau).
+     ========================================================================= */
+  if (window.__langSwitch) {
+    [].forEach.call(document.querySelectorAll(".header__nav__list"), function (list) {
+      var li = document.createElement("li");
+      li.className = "header__nav__el header__lang";
+      var hsw = window.__langSwitch("", function (lang) {
+        try { localStorage.setItem("cloud-lang", lang); } catch (e) { }
+        if (leaving) return;
+        setTimeout(function () {
+          leaving = document.createElement("div");
+          leaving.className = "pagefade is-clear is-leave";
+          leaving.setAttribute("aria-hidden", "true");
+          document.body.appendChild(leaving);
+          nextFrame(function () { leaving.classList.remove("is-clear"); });
+          setTimeout(function () { location.reload(); }, PAGE_OUT + 40);
+        }, 380);   // cho nut chay xong roi moi toi man
+      });
+      li.appendChild(hsw);
+      list.insertBefore(li, list.firstChild);
+    });
+  }
 
   /* =========================================================================
      ROI TRANG: fade toi roi moi chuyen
@@ -319,15 +549,16 @@
     box.setAttribute("aria-modal", "true");
     box.setAttribute("aria-label", "Zalo");
     box.setAttribute("data-lenis-prevent", "");
+    var T = window.__t || function (en) { return en; };
     box.innerHTML =
       '<div class="zqr__box">' +
         '<div class="zqr__bar mono text-sm uppercase">' +
           '<p class="zqr__title serif uppercase">Zalo</p>' +
-          '<button class="btn btn--sm zqr__close" type="button">Close ✕</button>' +
+          '<button class="btn btn--sm zqr__close" type="button">' + T("Close ✕", "Đóng ✕") + '</button>' +
         '</div>' +
         '<div class="zqr__card"><img class="zqr__code" alt="Zalo QR code" width="240" height="240" src="' + QR_SRC + '"></div>' +
-        '<p class="zqr__hint mono text-sm uppercase">Scan with the Zalo app</p>' +
-        '<a class="btn mono text-sm uppercase zqr__open" href="' + ZALO_URL + '" target="_blank" rel="noreferrer">Open in Zalo <span>→</span></a>' +
+        '<p class="zqr__hint mono text-sm uppercase">' + T("Scan with the Zalo app", "Quét bằng app Zalo") + '</p>' +
+        '<a class="btn mono text-sm uppercase zqr__open" href="' + ZALO_URL + '" target="_blank" rel="noreferrer">' + T("Open in Zalo", "Mở trong Zalo") + ' <span>→</span></a>' +
       '</div>';
     document.body.appendChild(box);
 
